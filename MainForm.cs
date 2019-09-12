@@ -69,6 +69,11 @@ namespace MicMute
             InitializeComponent();
         }
 
+        private void OnNextDevice(DeviceChangedArgs next)
+        {
+            UpdateDevice(next.Device);
+        }
+
         private void MainForm_Load(object sender, EventArgs e)
         {
             _hookID = SetHook(_proc);
@@ -78,32 +83,36 @@ namespace MicMute
             form.Location = new Point(-10000, -10000);
             form.Visible = false;
 
-            UpdateDevice();
-            AudioController.AudioDeviceChanged.Subscribe(m => UpdateDevice());
+            UpdateDevice(AudioController.DefaultCaptureDevice);
+            AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
             //AudioController.AudioDeviceChanged.Subscribe(x =>
             //{
             //    Debug.WriteLine("{0} - {1}", x.Device.Name, x.ChangedType.ToString());
             //});
         }
 
-        IDisposable muteChangedSubscription;
-        public void UpdateDevice()
+        private void OnMuteChanged(DeviceMuteChangedArgs next)
         {
-            var device = AudioController.DefaultCaptureDevice;
+            UpdateStatus(next.Device);
+        }
+
+        IDisposable muteChangedSubscription;
+        public void UpdateDevice(IDevice device)
+        {
             muteChangedSubscription?.Dispose();
-            muteChangedSubscription = device?.MuteChanged.Subscribe(x => UpdateStatus(device));
+            muteChangedSubscription = device?.MuteChanged.Subscribe(OnMuteChanged);
             UpdateStatus(device);
         }
 
         Icon iconOff = Properties.Resources.off;
         Icon iconOn = Properties.Resources.on;
         Icon iconError = Properties.Resources.error;
+
         public void UpdateStatus(IDevice device)
         {
             if (device != null)
             {
                 this.UpdateIcon(device.IsMuted ? iconOff : iconOn, device.FullName);
-                device.MuteChanged.Subscribe();
             }
             else
             {
