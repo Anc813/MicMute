@@ -26,7 +26,7 @@ namespace MicMute
 
         private void OnNextDevice(DeviceChangedArgs next)
         {
-            UpdateDevice(next.Device);
+            UpdateDevice(AudioController.DefaultCaptureDevice);
         }
 
         private void MyHide()
