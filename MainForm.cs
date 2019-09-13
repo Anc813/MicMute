@@ -4,7 +4,7 @@ using Microsoft.Win32;
 using Shortcut;
 using System;
 using System.Drawing;
-using System.Reactive.Linq;
+using System.Reactive;
 using System.Windows.Forms;
 
 
