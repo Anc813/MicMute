@@ -143,7 +143,7 @@ namespace MicMute
 
             if (hotkey == null)
             {
-                registryKey.DeleteValue(registryKeyName);
+                registryKey.DeleteValue(registryKeyName, false);
             }
             else
             {
