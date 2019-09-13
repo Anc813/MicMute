@@ -1,0 +1,222 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Shortcut</name>
+    </assembly>
+    <members>
+        <member name="T:Shortcut.Forms.HotkeyConverter">
+            <summary>
+            Provides a type converter to convert Hotkey objects to and from other representations.
+            </summary>
+        </member>
+        <member name="T:Shortcut.HotkeyAlreadyBoundException">
+            <summary>
+            Exception thrown to indicate that specified <see cref="T:Shortcut.Hotkey"/> cannot be 
+            bound because it has been previously bound either by this application or 
+            another running application.
+            </summary>
+            <remarks>
+            <para>
+            This exception normally occurs when you attempt to bind a 
+            <see cref="T:Shortcut.Hotkey"/> that has previously been bound by this application. 
+            </para>
+            <para>
+            This exception can also occur when another running application has already 
+            bound the specified <see cref="T:Shortcut.Hotkey"/>.  
+            </para>
+            <para>
+            Use the <see cref="M:Shortcut.HotkeyBinder.Unbind(Shortcut.Modifiers,System.Windows.Forms.Keys)"/> method to unbind a 
+            <see cref="T:Shortcut.Hotkey"/> previously bound by this application.
+            </para>
+            <para>
+            Use the <see cref="M:Shortcut.HotkeyBinder.IsHotkeyAlreadyBound(Shortcut.Hotkey)"/> function to 
+            determine whether the <see cref="T:Shortcut.Hotkey"/> in question has already been 
+            bound either by this application or another running application.
+            </para>
+            </remarks>
+        </member>
+        <member name="T:Shortcut.HotkeyNotBoundException">
+            <summary>
+            Exception thrown to indicate that the specified <see cref="T:Shortcut.Hotkey"/> cannot 
+            be unbound because it has not previously been bound by this application.
+            </summary>
+            <remarks>
+            <para>
+            This exception normally occurs when you attempt to unbind a 
+            <see cref="T:Shortcut.Hotkey"/> that was not previously bound by this application.
+            </para>
+            <para>
+            You cannot unbind a <see cref="T:Shortcut.Hotkey"/> registered by another application.
+            </para>
+            </remarks>
+        </member>
+        <member name="T:Shortcut.Modifiers">
+            <summary>
+            Modifier Keys.
+            </summary>
+        </member>
+        <member name="F:Shortcut.Modifiers.None">
+            <summary>
+            No modifier key pressed.
+            </summary>
+        </member>
+        <member name="F:Shortcut.Modifiers.Alt">
+            <summary>
+            The ALT modifier key.
+            </summary>
+        </member>
+        <member name="F:Shortcut.Modifiers.Control">
+            <summary>
+            The CTRL modifier key.
+            </summary>
+        </member>
+        <member name="F:Shortcut.Modifiers.Shift">
+            <summary>
+            The SHIFT modifier key.
+            </summary>
+        </member>
+        <member name="F:Shortcut.Modifiers.Win">
+            <summary>
+            The Windows logo key (Microsoft Natural Keyboard).
+            </summary>
+        </member>
+        <member name="T:Shortcut.HotkeyBinder">
+            <summary>
+            Used to bind and unbind <see cref="T:Shortcut.Hotkey"/>s to 
+            <see cref="T:Shortcut.HotkeyCallback"/>s.
+            </summary>
+        </member>
+        <member name="M:Shortcut.HotkeyBinder.#ctor">
+            <summary>
+            Initializes a new instance of the <see cref="T:Shortcut.HotkeyBinder"/> class.
+            </summary>
+        </member>
+        <member name="M:Shortcut.HotkeyBinder.IsHotkeyAlreadyBound(Shortcut.Hotkey)">
+            <summary>
+            Indicates whether a <see cref="T:Shortcut.Hotkey"/> has been bound already either 
+            by this application or another application.
+            </summary>
+            <param name="hotkeyCombo">
+            The <see cref="T:Shortcut.Hotkey"/> to evaluate.
+            </param>
+            <returns>
+            <c>true</c> if the <see cref="T:Shortcut.Hotkey"/> has not been previously bound 
+            and is available to be bound; otherwise, <c>false</c>.
+            </returns>
+        </member>
+        <member name="M:Shortcut.HotkeyBinder.Bind(Shortcut.Modifiers,System.Windows.Forms.Keys)">
+            <summary>
+            Binds a hotkey combination to a <see cref="T:Shortcut.HotkeyCallback"/>.
+            </summary>
+            <param name="modifiers">The modifers that constitute this hotkey.</param>
+            <param name="keys">The keys that constitute this hotkey.</param>
+            <exception cref="T:Shortcut.HotkeyAlreadyBoundException"></exception>
+            <exception cref="T:System.ArgumentNullException"></exception>
+        </member>
+        <member name="M:Shortcut.HotkeyBinder.Bind(Shortcut.Hotkey)">
+            <summary>
+            Binds a <see cref="T:Shortcut.Hotkey"/> to a <see cref="T:Shortcut.HotkeyCallback"/>.
+            </summary>
+            <exception cref="T:Shortcut.HotkeyAlreadyBoundException"></exception>
+            <exception cref="T:System.ArgumentNullException"></exception>
+        </member>
+        <member name="M:Shortcut.HotkeyBinder.Unbind(Shortcut.Modifiers,System.Windows.Forms.Keys)">
+            <summary>
+            Unbinds a previously bound hotkey combination.
+            </summary>
+        </member>
+        <member name="M:Shortcut.HotkeyBinder.Unbind(Shortcut.Hotkey)">
+            <summary>
+            Unbinds a previously bound <see cref="T:Shortcut.Hotkey"/>.
+            </summary>
+            <exception cref="T:Shortcut.HotkeyNotBoundException"></exception>
+            <exception cref="T:System.ArgumentNullException"></exception>
+        </member>
+        <member name="M:Shortcut.HotkeyBinder.Dispose">
+            <inheritdoc />
+        </member>
+        <member name="T:Shortcut.HotkeyCallback">
+            <summary>
+            Represents a callback for a <see cref="T:Shortcut.Hotkey"/> binding.
+            </summary>
+        </member>
+        <member name="M:Shortcut.HotkeyCallback.To(System.Action)">
+            <summary>
+            Indicates that the <see cref="T:Shortcut.Hotkey"/> should be bound to the specified
+            <paramref name="callback"/>.
+            </summary>
+        </member>
+        <member name="T:Shortcut.Hotkey">
+            <summary>
+            Represents a combination of keys that constitute a system-wide hotkey.
+            </summary>
+        </member>
+        <member name="M:Shortcut.Hotkey.#ctor(Shortcut.Modifiers,System.Windows.Forms.Keys)">
+            <summary>
+            Initializes a new instance of the <see cref="T:Shortcut.Hotkey"/> class.
+            </summary>
+        </member>
+        <member name="M:Shortcut.Hotkey.Equals(Shortcut.Hotkey)">
+            <summary>
+            Indicates whether the value of this <see cref="T:Shortcut.Hotkey"/> is equal to the
+            value of the specified <see cref="T:Shortcut.Hotkey"/>.
+            </summary>
+            <param name="other">The value to compare with this instance.</param>
+            <returns>
+            <c>true</c> if the value of this <see cref="T:Shortcut.Hotkey"/> is equal to the 
+            value of the <paramref name="other"/> parameter; otherwise, false.
+            </returns>
+        </member>
+        <member name="M:Shortcut.Hotkey.Equals(System.Object)">
+            <summary>
+            Determines whether the specified <see cref="T:System.Object"/> is equal to
+            this instance.
+            </summary>
+            <param name="other">
+            The <see cref="T:System.Object"/> to compare with this instance.
+            </param>
+            <returns>
+            <c>true</c> if the specifed <see cref="T:System.Object"/> is equal to this 
+            instance; otherwise, <c>false</c>.
+            </returns>
+        </member>
+        <member name="M:Shortcut.Hotkey.GetHashCode">
+            <summary>
+            Returns the hash code for this <see cref="T:Shortcut.Hotkey"/>.
+            </summary>
+        </member>
+        <member name="M:Shortcut.Hotkey.ToString">
+            <inheritdoc />
+        </member>
+        <member name="M:Shortcut.Hotkey.op_Equality(Shortcut.Hotkey,Shortcut.Hotkey)">
+            <summary>
+            Implements the operator == (equality).
+            </summary>
+            <param name="left">The left-hand side of the operator.</param>
+            <param name="right">The right-hand side of the operator.</param>
+            <returns>
+            <c>true</c> if values are equal to each other, otherwise <c>false</c>.
+            </returns>
+        </member>
+        <member name="M:Shortcut.Hotkey.op_Inequality(Shortcut.Hotkey,Shortcut.Hotkey)">
+            <summary>
+            Implements the operator != (inequality)
+            </summary>
+            <param name="left">The left-hand side of the operator.</param>
+            <param name="right">The right-hand side of the operator.</param>
+            <returns>
+            <c>true</c> if values are not equal to each other, otherwise <c>false</c>.
+            </returns>
+        </member>
+        <member name="P:Shortcut.Hotkey.Modifier">
+            <summary>
+            The modifer keys that constitute this <see cref="T:Shortcut.Hotkey"/>.
+            </summary>
+        </member>
+        <member name="P:Shortcut.Hotkey.Key">
+            <summary>
+            The keys that constitute this <see cref="T:Shortcut.Hotkey"/>.
+            </summary>
+        </member>
+    </members>
+</doc>
