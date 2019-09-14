@@ -6,8 +6,8 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("MicMute")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("MicMute https://git.io/JeYVX")]
+[assembly: AssemblyDescription("https://github.com/Anc813/MicMute")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("")]
 [assembly: AssemblyProduct("MicMute")]
