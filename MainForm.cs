@@ -19,6 +19,13 @@ namespace MicMute
 
         private Hotkey hotkey;
 
+        private bool myVisible; 
+        public bool MyVisible
+        {
+            get { return myVisible; }
+            set { myVisible = value; Visible = value; }
+        }
+
         public MainForm()
         {
             InitializeComponent();
@@ -33,12 +40,12 @@ namespace MicMute
         {
             ShowInTaskbar = false;
             Location = new Point(-10000, -10000);
-            Visible = false;
+            MyVisible = false;
         }
 
         private void MyShow()
         {
-            Visible = true;
+            MyVisible = true;
             ShowInTaskbar = true;
             CenterToScreen();
         }
@@ -136,19 +143,25 @@ namespace MicMute
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            MyHide();
-            e.Cancel = true;
-
-            hotkey = hotkeyTextBox.Hotkey;
-
-            if (hotkey == null)
+            if (MyVisible)
             {
-                registryKey.DeleteValue(registryKeyName, false);
-            }
-            else
-            {
-                hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
-                registryKey.SetValue(registryKeyName, hotkey);
+                MyHide();
+                e.Cancel = true;
+
+                hotkey = hotkeyTextBox.Hotkey;
+
+                if (hotkey == null)
+                {
+                    registryKey.DeleteValue(registryKeyName, false);
+                }
+                else
+                {
+                    if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey))
+                    {
+                        registryKey.SetValue(registryKeyName, hotkey);
+                        hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
+                    }
+                }
             }
         }
 
