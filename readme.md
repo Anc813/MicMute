@@ -10,6 +10,10 @@ Mute default capture device (typically microphone) using tray icon click or cust
 
 [All versions](https://github.com/Anc813/MicMute/releases)
 
+###
+
+[How to add sound on mute / unmute](https://github.com/Anc813/MicMute/releases/tag/0.0.5)
+
 ### Using
 
 Shortcut library https://github.com/AlexArchive/Shortcut
