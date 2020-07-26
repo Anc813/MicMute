@@ -4,6 +4,8 @@ using Microsoft.Win32;
 using Shortcut;
 using System;
 using System.Drawing;
+using System.IO;
+using System.Media;
 using System.Reactive;
 using System.Windows.Forms;
 
@@ -18,6 +20,11 @@ namespace MicMute
         private readonly string registryKeyName = "Hotkey";
 
         private Hotkey hotkey;
+        enum MicStatus
+        {
+            Initial, On, Off, Error
+        }
+        private MicStatus currentStatus;
 
         private bool myVisible; 
         public bool MyVisible
@@ -87,15 +94,37 @@ namespace MicMute
         Icon iconOn = Properties.Resources.on;
         Icon iconError = Properties.Resources.error;
 
+        public void PlaySound(string relativePath)
+        {
+            string path = Path.Combine(Application.StartupPath, relativePath);
+            if (File.Exists(path))
+            {
+                SoundPlayer simpleSound = new SoundPlayer(path);
+                simpleSound.Play();
+            }
+        }
+
         public void UpdateStatus(IDevice device)
         {
-            if (device != null)
+            MicStatus newStatus = (device != null) ? (device.IsMuted ? MicStatus.Off : MicStatus.On) : MicStatus.Error;
+            if (currentStatus != newStatus)
             {
-                UpdateIcon(device.IsMuted ? iconOff : iconOn, device.FullName);
-            }
-            else
-            {
-                UpdateIcon(iconError, "< No device >");
+                currentStatus = newStatus;
+                switch (currentStatus)
+                {
+                    case MicStatus.On:
+                        UpdateIcon(iconOn, device.FullName);
+                        PlaySound("on.wav");
+                        break;
+                    case MicStatus.Off:
+                        UpdateIcon(iconOff, device.FullName);
+                        PlaySound("off.wav");
+                        break;
+                    case MicStatus.Error:
+                        UpdateIcon(iconOff, "< No device >");
+                        PlaySound("error.wav");
+                        break;
+                }
             }
         }
         private void UpdateIcon(Icon icon, string tooltipText)
