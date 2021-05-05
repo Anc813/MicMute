@@ -14,12 +14,20 @@ namespace MicMute
 {
     public partial class MainForm : Form
     {
+        const string DEFAULT_RECORDING_DEVICE = "Default recording device";
         public CoreAudioController AudioController = new CoreAudioController();
         private readonly HotkeyBinder hotkeyBinder = new HotkeyBinder();
         private readonly RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MicMute");
         private readonly string registryKeyName = "Hotkey";
+        private readonly string registryDeviceId = "DeviceId";
+        private readonly string registryDeviceName = "DeviceName";
 
         private Hotkey hotkey;
+        private string selectedDeviceId;
+        private string selectedDeviceName;
+        private MicSelectorForm micSelectorForm;
+
+
         enum MicStatus
         {
             Initial, On, Off, Error
@@ -40,7 +48,7 @@ namespace MicMute
 
         private void OnNextDevice(DeviceChangedArgs next)
         {
-            UpdateDevice(AudioController.DefaultCaptureDevice);
+            UpdateSelectedDevice();
         }
 
         private void MyHide()
@@ -60,7 +68,10 @@ namespace MicMute
         private void MainForm_Load(object sender, EventArgs e)
         {
             MyHide();
-            UpdateDevice(AudioController.DefaultCaptureDevice);
+            selectedDeviceId = (string)registryKey.GetValue(registryDeviceId) ?? "";
+            selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
+
+            UpdateSelectedDevice();
             AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
 
             var hotkeyValue = registryKey.GetValue(registryKeyName);
@@ -89,6 +100,15 @@ namespace MicMute
             muteChangedSubscription = device?.MuteChanged.Subscribe(OnMuteChanged);
             UpdateStatus(device);
         }
+        public IDevice getSelectedDevice()
+        {
+            return selectedDeviceId == "" ? AudioController.DefaultCaptureDevice : AudioController.GetDevice(new Guid(selectedDeviceId), DeviceState.Active);
+        }
+
+        public void UpdateSelectedDevice()
+        {
+            UpdateDevice(getSelectedDevice());
+        }
 
         Icon iconOff = Properties.Resources.off;
         Icon iconOn = Properties.Resources.on;
@@ -107,24 +127,22 @@ namespace MicMute
         public void UpdateStatus(IDevice device)
         {
             MicStatus newStatus = (device != null) ? (device.IsMuted ? MicStatus.Off : MicStatus.On) : MicStatus.Error;
-            if (currentStatus != newStatus)
+            bool playSound = currentStatus != MicStatus.Initial && currentStatus != newStatus;
+            currentStatus = newStatus;
+            switch (currentStatus)
             {
-                currentStatus = newStatus;
-                switch (currentStatus)
-                {
-                    case MicStatus.On:
-                        UpdateIcon(iconOn, device.FullName);
-                        PlaySound("on.wav");
-                        break;
-                    case MicStatus.Off:
-                        UpdateIcon(iconOff, device.FullName);
-                        PlaySound("off.wav");
-                        break;
-                    case MicStatus.Error:
-                        UpdateIcon(iconOff, "< No device >");
-                        PlaySound("error.wav");
-                        break;
-                }
+                case MicStatus.On:
+                    UpdateIcon(iconOn, device.FullName);
+                    if (playSound) PlaySound("on.wav");
+                    break;
+                case MicStatus.Off:
+                    UpdateIcon(iconOff, device.FullName);
+                    if (playSound) PlaySound("off.wav");
+                    break;
+                case MicStatus.Error:
+                    UpdateIcon(iconError, "< No device >");
+                    if (playSound) PlaySound("error.wav");
+                    break;
             }
         }
         private void UpdateIcon(Icon icon, string tooltipText)
@@ -135,21 +153,7 @@ namespace MicMute
 
         public async void ToggleMicStatus()
         {
-            await AudioController.DefaultCaptureDevice?.ToggleMuteAsync();
-        }
-
-        public void UpdateStatus()
-        {
-            var device = AudioController.DefaultCaptureDevice;
-
-            if (device != null)
-            {
-                UpdateIcon(device.IsMuted ? Properties.Resources.off : Properties.Resources.on, device.FullName);
-            }
-            else
-            {
-                UpdateIcon(Properties.Resources.error, "< No device >");
-            }
+            await getSelectedDevice()?.ToggleMuteAsync();
         }
 
         private void Icon_MouseClick(object sender, MouseEventArgs e)
@@ -202,6 +206,63 @@ namespace MicMute
         private void ExitMenuItem_Click(object sender, EventArgs e)
         {
             Application.Exit();
+        }
+
+        private void toolStripMenuItem2_Click(object sender, EventArgs e)
+        {
+            micSelectorForm = new MicSelectorForm();
+            ComboBox comboBox = micSelectorForm.cbMics;
+            comboBox.Items.Clear();
+
+            bool registryExists = false;
+
+            ComboboxItem defaultItem = new ComboboxItem();
+            defaultItem.Text = DEFAULT_RECORDING_DEVICE;
+            defaultItem.deviceId = "";
+            comboBox.Items.Add(defaultItem);
+
+            if (selectedDeviceId == "")
+            {
+                registryExists = true;
+                comboBox.SelectedIndex = comboBox.Items.Count - 1;
+            }
+
+            foreach (CoreAudioDevice device in AudioController.GetCaptureDevices())
+            {
+                if (device.State == DeviceState.Active)
+                {
+                    ComboboxItem item = new ComboboxItem();
+                    item.Text = device.FullName;
+                    item.deviceId = device.Id.ToString();
+                    comboBox.Items.Add(item);
+
+                    if (item.deviceId == selectedDeviceId)
+                    {
+                        registryExists = true;
+                        comboBox.SelectedIndex = comboBox.Items.Count - 1;
+                    }
+                }
+            }
+
+            if (!registryExists) {
+                ComboboxItem item = new ComboboxItem();
+                item.Text = "(unavailable) " + registryDeviceName.ToString();
+                item.deviceId = selectedDeviceId.ToString();
+                comboBox.Items.Add(item);
+                comboBox.SelectedIndex = comboBox.Items.Count - 1;
+            }
+            DialogResult result = micSelectorForm.ShowDialog();
+            Console.WriteLine(result);
+            ComboboxItem selectedItem = (ComboboxItem)comboBox.SelectedItem;
+
+            registryKey.SetValue(registryDeviceId, selectedItem.deviceId);
+            registryKey.SetValue(registryDeviceName, selectedItem.Text);
+            selectedDeviceName = selectedItem.Text;
+            selectedDeviceId = selectedItem.deviceId;
+
+            micSelectorForm.Dispose();
+
+            UpdateSelectedDevice();
         }
     }
 }
