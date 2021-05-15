@@ -18,11 +18,22 @@ namespace MicMute
         public CoreAudioController AudioController = new CoreAudioController();
         private readonly HotkeyBinder hotkeyBinder = new HotkeyBinder();
         private readonly RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MicMute");
+        
+        // toggle
         private readonly string registryKeyName = "Hotkey";
+        private Hotkey hotkey;
+
+        // mute
+        private readonly string registryKeyMute = "HotkeyMute";
+        private Hotkey muteHotkey;
+
+        // unmute
+        private readonly string registryKeyUnmute = "HotkeyUnmute";
+        private Hotkey unMuteHotkey;
+
         private readonly string registryDeviceId = "DeviceId";
         private readonly string registryDeviceName = "DeviceName";
 
-        private Hotkey hotkey;
         private string selectedDeviceId;
         private string selectedDeviceName;
         private MicSelectorForm micSelectorForm;
@@ -73,13 +84,32 @@ namespace MicMute
 
             UpdateSelectedDevice();
             AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
-
+            
+            // toggle
             var hotkeyValue = registryKey.GetValue(registryKeyName);
             if (hotkeyValue != null)
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 hotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
+                if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
+            }
+
+            // mute 
+            hotkeyValue = registryKey.GetValue(registryKeyMute);
+            if (hotkeyValue != null)
+            {
+                var converter = new Shortcut.Forms.HotkeyConverter();
+                muteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
+                if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
+            }
+
+            // unmute 
+            hotkeyValue = registryKey.GetValue(registryKeyUnmute);
+            if (hotkeyValue != null)
+            {
+                var converter = new Shortcut.Forms.HotkeyConverter();
+                unMuteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
+                if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Bind(unMuteHotkey).To(UnMuteMicStatus);
             }
 
             //AudioController.AudioDeviceChanged.Subscribe(x =>
@@ -156,6 +186,16 @@ namespace MicMute
             await getSelectedDevice()?.ToggleMuteAsync();
         }
 
+        public async void MuteMicStatus()
+        {
+            await getSelectedDevice()?.SetMuteAsync(true);
+        }
+
+        public async void UnMuteMicStatus()
+        {
+            await getSelectedDevice()?.SetMuteAsync(false);
+        }
+
         private void Icon_MouseClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -166,11 +206,27 @@ namespace MicMute
 
         private void HotkeyToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            // toggle
             if (hotkey != null)
             {
                 hotkeyTextBox.Hotkey = hotkey;
-                hotkeyBinder.Unbind(hotkey);
+                if (hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Unbind(hotkey);
             }
+
+            // mute
+            if (muteHotkey != null)
+            {
+                muteTextBox.Hotkey = muteHotkey;
+                if (hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Unbind(muteHotkey);
+            }
+
+            // unmute
+            if (unMuteHotkey != null)
+            {
+                unmuteTextBox.Hotkey = unMuteHotkey;
+                if (hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Unbind(unMuteHotkey);
+            }
+
             MyShow();
         }
 
@@ -192,9 +248,41 @@ namespace MicMute
                     if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey))
                     {
                         registryKey.SetValue(registryKeyName, hotkey);
-                        hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
+                        if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
                     }
                 }
+
+                muteHotkey = muteTextBox.Hotkey;
+
+                if (muteHotkey == null)
+                {
+                    registryKey.DeleteValue(registryKeyMute, false);
+                }
+                else
+                {
+                    if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey))
+                    {
+                        registryKey.SetValue(registryKeyMute, muteHotkey);
+                        if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
+                    }
+                }
+
+
+                unMuteHotkey = unmuteTextBox.Hotkey;
+
+                if (unMuteHotkey == null)
+                {
+                    registryKey.DeleteValue(registryKeyUnmute, false);
+                }
+                else
+                {
+                    if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey))
+                    {
+                        registryKey.SetValue(registryKeyUnmute, unMuteHotkey);
+                        if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Bind(unMuteHotkey).To(UnMuteMicStatus);
+                    }
+                }
+
             }
         }
 
@@ -203,6 +291,18 @@ namespace MicMute
             hotkeyTextBox.Hotkey = null;
             hotkeyTextBox.Text = "None";
         }
+        private void muteReset_Click(object sender, EventArgs e)
+        {
+            muteTextBox.Hotkey = null;
+            muteTextBox.Text = "None";
+        }
+
+        private void unmuteReset_Click(object sender, EventArgs e)
+        {
+            unmuteTextBox.Hotkey = null;
+            unmuteTextBox.Text = "None";
+        }
+
         private void ExitMenuItem_Click(object sender, EventArgs e)
         {
             Application.Exit();
