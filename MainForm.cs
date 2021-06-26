@@ -8,6 +8,7 @@ using System.IO;
 using System.Media;
 using System.Reactive;
 using System.Windows.Forms;
+using System.Timers;
 
 
 namespace MicMute
@@ -18,7 +19,7 @@ namespace MicMute
         public CoreAudioController AudioController = new CoreAudioController();
         private readonly HotkeyBinder hotkeyBinder = new HotkeyBinder();
         private readonly RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MicMute");
-        
+
         // toggle
         private readonly string registryKeyName = "Hotkey";
         private Hotkey hotkey;
@@ -45,12 +46,22 @@ namespace MicMute
         }
         private MicStatus currentStatus;
 
-        private bool myVisible; 
+        private bool myVisible;
         public bool MyVisible
         {
             get { return myVisible; }
             set { myVisible = value; Visible = value; }
         }
+
+        public bool key_hold = false;
+
+        // Time in milliseconds.
+        // Wait and revert mute state after key "release".
+        public static int key_hold_toggle_back_timer_wait = 1000;
+
+        private static System.Timers.Timer key_hold_toggle_back_timer;
+        public bool key_hold_toggled_back = true;
+        public bool key_hold_held = false;
 
         public MainForm()
         {
@@ -84,17 +95,17 @@ namespace MicMute
 
             UpdateSelectedDevice();
             AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
-            
+
             // toggle
             var hotkeyValue = registryKey.GetValue(registryKeyName);
             if (hotkeyValue != null)
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 hotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
+                if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatusCheck);
             }
 
-            // mute 
+            // mute
             hotkeyValue = registryKey.GetValue(registryKeyMute);
             if (hotkeyValue != null)
             {
@@ -103,7 +114,7 @@ namespace MicMute
                 if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
             }
 
-            // unmute 
+            // unmute
             hotkeyValue = registryKey.GetValue(registryKeyUnmute);
             if (hotkeyValue != null)
             {
@@ -116,6 +127,10 @@ namespace MicMute
             //{
             //    Debug.WriteLine("{0} - {1}", x.Device.Name, x.ChangedType.ToString());
             //});
+
+            // track hold/release option
+            key_hold_toggle_back_timer = new System.Timers.Timer(key_hold_toggle_back_timer_wait);
+            key_hold_toggle_back_timer.Elapsed += OnToggleTimerDoneAutoToggle;
         }
 
         private void OnMuteChanged(DeviceMuteChangedArgs next)
@@ -181,9 +196,46 @@ namespace MicMute
             this.icon.Text = tooltipText;
         }
 
+        public void OnToggleTimerDoneAutoToggle(Object source, ElapsedEventArgs e)
+        {
+            // Reset.
+            key_hold_toggle_back_timer.Stop();
+            key_hold_toggled_back = true;
+
+            // Toggle to previous mute state, if key was held.
+            if (key_hold_held)
+            {
+                key_hold_held = false;
+                ToggleMicStatus();
+            }
+        }
+
         public async void ToggleMicStatus()
         {
             await getSelectedDevice()?.ToggleMuteAsync();
+        }
+
+        public void ToggleMicStatusCheck()
+        {
+            if (key_hold)
+            {
+                // If state was toggled back, then restart key hold.
+                if (key_hold_toggled_back)
+                {
+                    key_hold_toggled_back = false;
+                    key_hold_toggle_back_timer.Start();
+                }
+                else
+                {
+                    // Restart toggle back timer.
+                    key_hold_held = true;
+                    key_hold_toggle_back_timer.Stop();
+                    key_hold_toggle_back_timer.Start();
+                    return;
+                }
+            }
+
+            ToggleMicStatus();
         }
 
         public async void MuteMicStatus()
@@ -248,7 +300,7 @@ namespace MicMute
                     if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey))
                     {
                         registryKey.SetValue(registryKeyName, hotkey);
-                        if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
+                        if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatusCheck);
                     }
                 }
 
@@ -363,6 +415,11 @@ namespace MicMute
             micSelectorForm.Dispose();
 
             UpdateSelectedDevice();
+        }
+
+        private void toolStripMenuItem3_Click(object sender, EventArgs e)
+        {
+            key_hold = !key_hold;
         }
     }
 }
