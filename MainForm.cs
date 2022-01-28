@@ -178,7 +178,7 @@ namespace MicMute
         private void UpdateIcon(Icon icon, string tooltipText)
         {
             this.icon.Icon = icon;
-            this.icon.Text = tooltipText.Substring(0, Math.Min(tooltipText.Length, 64));
+            this.icon.Text = tooltipText.Substring(0, Math.Min(tooltipText.Length, 63));
         }
 
         public async void ToggleMicStatus()
