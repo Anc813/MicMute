@@ -1,5 +1,6 @@
 ﻿using AudioSwitcher.AudioApi;
 using AudioSwitcher.AudioApi.CoreAudio;
+using Microsoft.Owin.Hosting;
 using Microsoft.Win32;
 using Shortcut;
 using System;
@@ -14,6 +15,7 @@ namespace MicMute
 {
     public partial class MainForm : Form
     {
+        private static IDisposable iWebService = null;
         const string DEFAULT_RECORDING_DEVICE = "Default recording device";
         public CoreAudioController AudioController = new CoreAudioController();
         private readonly HotkeyBinder hotkeyBinder = new HotkeyBinder();
@@ -55,6 +57,8 @@ namespace MicMute
         public MainForm()
         {
             InitializeComponent();
+            iWebService = WebApp.Start<Startup>("http://+:8081");
+            CentralUIDispatcher.RegisterMainWindow(this);
         }
 
         private void OnNextDevice(DeviceChangedArgs next)
@@ -67,6 +71,7 @@ namespace MicMute
             ShowInTaskbar = false;
             Location = new Point(-10000, -10000);
             MyVisible = false;
+            
         }
 
         private void MyShow()

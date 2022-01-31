@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace MicMute
@@ -9,6 +6,7 @@ namespace MicMute
     static class Program
     {
         public static MainForm mf = null;
+
 
         /// <summary>
         /// The main entry point for the application.
@@ -20,6 +18,8 @@ namespace MicMute
             Application.SetCompatibleTextRenderingDefault(false);
             mf = new MainForm();
             Application.Run(mf);
+
+
         }
     }
 }
