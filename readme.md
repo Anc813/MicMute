@@ -14,7 +14,15 @@ Mute default capture device (typically microphone) using tray icon click or cust
 
 [How to add sound on mute / unmute](https://github.com/Anc813/MicMute/releases/tag/0.0.5)
 
-### Using
+### Troubleshooting
+
+**Hotkey Issues in Full-Screen Applications or applications running with administrator privileges**
+
+*   **Problem:** MicMute hotkeys might stop working when certain applications, particularly full-screen games (like Oxygen Not Included) or applications running with administrator privileges, are in the foreground. This can lead to the microphone staying on unexpectedly.
+*   **Cause:** Windows security mechanisms can prevent hotkey signals from reaching applications running with standard user privileges when an application with administrator privileges is active.
+*   **Solution:** Run `MicMute.exe` with administrator rights. This allows MicMute to receive hotkey signals regardless of which application is currently active or its privilege level. To do this, right-click the `MicMute.exe` file and select "Run as administrator". For persistent use, you can configure the executable or a shortcut to always run as administrator.
+
+### Libraries that used in this project
 
 Shortcut library https://github.com/AlexArchive/Shortcut
 
