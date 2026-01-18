@@ -1,4 +1,4 @@
-﻿using AudioSwitcher.AudioApi;
+using AudioSwitcher.AudioApi;
 using AudioSwitcher.AudioApi.CoreAudio;
 using Microsoft.Win32;
 using Shortcut;
@@ -8,7 +8,6 @@ using System.IO;
 using System.Media;
 using System.Reactive;
 using System.Windows.Forms;
-
 
 namespace MicMute
 {
@@ -91,7 +90,7 @@ namespace MicMute
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 hotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
+                BindWildcard(hotkey, ToggleMicStatus);
             }
 
             // mute 
@@ -100,7 +99,7 @@ namespace MicMute
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 muteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
+                BindWildcard(muteHotkey, MuteMicStatus);
             }
 
             // unmute 
@@ -109,13 +108,8 @@ namespace MicMute
             {
                 var converter = new Shortcut.Forms.HotkeyConverter();
                 unMuteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
-                if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Bind(unMuteHotkey).To(UnMuteMicStatus);
+                BindWildcard(unMuteHotkey, UnMuteMicStatus);
             }
-
-            //AudioController.AudioDeviceChanged.Subscribe(x =>
-            //{
-            //    Debug.WriteLine("{0} - {1}", x.Device.Name, x.ChangedType.ToString());
-            //});
         }
 
         private void OnMuteChanged(DeviceMuteChangedArgs next)
@@ -123,13 +117,16 @@ namespace MicMute
             UpdateStatus(next.Device);
         }
 
+        // ИСПРАВЛЕНИЕ ЗДЕСЬ: Был IDevice, стал IDisposable
         IDisposable muteChangedSubscription;
+        
         public void UpdateDevice(IDevice device)
         {
             muteChangedSubscription?.Dispose();
             muteChangedSubscription = device?.MuteChanged.Subscribe(OnMuteChanged);
             UpdateStatus(device);
         }
+        
         public IDevice getSelectedDevice()
         {
             return selectedDeviceId == "" ? AudioController.DefaultCaptureDevice : AudioController.GetDevice(new Guid(selectedDeviceId), DeviceState.Active);
@@ -196,6 +193,35 @@ namespace MicMute
             await getSelectedDevice()?.SetMuteAsync(false);
         }
 
+        
+        private void BindWildcard(Hotkey hotkey, Action action)
+        {
+            if (hotkey == null) return;
+
+            Keys k = hotkey.Key;
+
+            Modifiers[] allModifiers = new Modifiers[] {
+                Modifiers.None,
+                Modifiers.Shift,
+                Modifiers.Control,
+                Modifiers.Alt,
+                Modifiers.Shift | Modifiers.Control,
+                Modifiers.Shift | Modifiers.Alt,
+                Modifiers.Control | Modifiers.Alt,
+                Modifiers.Shift | Modifiers.Control | Modifiers.Alt
+            };
+
+            foreach (var mod in allModifiers)
+            {
+                Hotkey combo = new Hotkey(mod, k);
+                if (!hotkeyBinder.IsHotkeyAlreadyBound(combo))
+                {
+                    hotkeyBinder.Bind(combo).To(action);
+                }
+            }
+        } 
+        // === КОНЕЦ НОВОЙ ФУНКЦИИ ===
+
         private void Icon_MouseClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -237,52 +263,41 @@ namespace MicMute
                 MyHide();
                 e.Cancel = true;
 
+                // TOGGLE
                 hotkey = hotkeyTextBox.Hotkey;
-
                 if (hotkey == null)
                 {
                     registryKey.DeleteValue(registryKeyName, false);
                 }
                 else
                 {
-                    if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey))
-                    {
-                        registryKey.SetValue(registryKeyName, hotkey);
-                        if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
-                    }
+                    registryKey.SetValue(registryKeyName, hotkey);
+                    BindWildcard(hotkey, ToggleMicStatus);
                 }
 
+                // MUTE
                 muteHotkey = muteTextBox.Hotkey;
-
                 if (muteHotkey == null)
                 {
                     registryKey.DeleteValue(registryKeyMute, false);
                 }
                 else
                 {
-                    if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey))
-                    {
-                        registryKey.SetValue(registryKeyMute, muteHotkey);
-                        if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
-                    }
+                    registryKey.SetValue(registryKeyMute, muteHotkey);
+                    BindWildcard(muteHotkey, MuteMicStatus);
                 }
 
-
+                // UNMUTE
                 unMuteHotkey = unmuteTextBox.Hotkey;
-
                 if (unMuteHotkey == null)
                 {
                     registryKey.DeleteValue(registryKeyUnmute, false);
                 }
                 else
                 {
-                    if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey))
-                    {
-                        registryKey.SetValue(registryKeyUnmute, unMuteHotkey);
-                        if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Bind(unMuteHotkey).To(UnMuteMicStatus);
-                    }
+                    registryKey.SetValue(registryKeyUnmute, unMuteHotkey);
+                    BindWildcard(unMuteHotkey, UnMuteMicStatus);
                 }
-
             }
         }
 
