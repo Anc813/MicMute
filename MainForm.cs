@@ -3,6 +3,7 @@ using AudioSwitcher.AudioApi.CoreAudio;
 using Microsoft.Win32;
 using Shortcut;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Media;
@@ -18,6 +19,9 @@ namespace MicMute
         public CoreAudioController AudioController = new CoreAudioController();
         private readonly HotkeyBinder hotkeyBinder = new HotkeyBinder();
         private readonly RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MicMute");
+
+        private readonly Dictionary<string, SoundPlayer> soundPlayers = new Dictionary<string, SoundPlayer>();
+        private IDisposable deviceChangedSubscription;
         
         // toggle
         private readonly string registryKeyName = "Hotkey";
@@ -83,7 +87,7 @@ namespace MicMute
             selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
 
             UpdateSelectedDevice();
-            AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
+            deviceChangedSubscription = AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
             
             // toggle
             var hotkeyValue = registryKey.GetValue(registryKeyName);
@@ -146,12 +150,20 @@ namespace MicMute
 
         public void PlaySound(string relativePath)
         {
-            string path = Path.Combine(Application.StartupPath, relativePath);
-            if (File.Exists(path))
+            if (!soundPlayers.ContainsKey(relativePath))
             {
-                SoundPlayer simpleSound = new SoundPlayer(path);
-                simpleSound.Play();
+                string path = Path.Combine(Application.StartupPath, relativePath);
+                if (File.Exists(path))
+                {
+                    soundPlayers[relativePath] = new SoundPlayer(path);
+                }
+                else
+                {
+                    soundPlayers[relativePath] = null;
+                }
             }
+
+            soundPlayers[relativePath]?.Play();
         }
 
         public void UpdateStatus(IDevice device)
@@ -363,6 +375,31 @@ namespace MicMute
             micSelectorForm.Dispose();
 
             UpdateSelectedDevice();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (components != null)
+                {
+                    components.Dispose();
+                }
+
+                // Custom resource disposal
+                AudioController?.Dispose();
+                registryKey?.Dispose();
+                hotkeyBinder?.Dispose();
+                muteChangedSubscription?.Dispose();
+                deviceChangedSubscription?.Dispose();
+
+                foreach (var player in soundPlayers.Values)
+                {
+                    player?.Dispose();
+                }
+                soundPlayers.Clear();
+            }
+            base.Dispose(disposing);
         }
     }
 }
