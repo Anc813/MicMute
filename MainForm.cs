@@ -1,13 +1,12 @@
-﻿using AudioSwitcher.AudioApi;
-using AudioSwitcher.AudioApi.CoreAudio;
 using Microsoft.Win32;
+using NAudio.CoreAudioApi;
+using NAudio.CoreAudioApi.Interfaces;
 using Shortcut;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Media;
-using System.Reactive;
 using System.Windows.Forms;
 
 
@@ -16,13 +15,22 @@ namespace MicMute
     public partial class MainForm : Form
     {
         const string DEFAULT_RECORDING_DEVICE = "Default recording device";
-        public CoreAudioController AudioController = new CoreAudioController();
+
+        // NAudio does not run any background peak-metering timer (unlike the previous
+        // AudioSwitcher library), so simply enumerating / holding devices does not leak.
+        private readonly MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
         private readonly HotkeyBinder hotkeyBinder = new HotkeyBinder();
         private readonly RegistryKey registryKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MicMute");
 
         private readonly Dictionary<string, SoundPlayer> soundPlayers = new Dictionary<string, SoundPlayer>();
-        private IDisposable deviceChangedSubscription;
-        
+
+        private readonly IMMNotificationClient notificationClient;
+        private bool notificationClientRegistered;
+
+        // The device we are currently monitoring for mute changes.
+        private MMDevice currentDevice;
+        private AudioEndpointVolumeNotificationDelegate volumeHandler;
+
         // toggle
         private readonly string registryKeyName = "Hotkey";
         private Hotkey hotkey;
@@ -49,7 +57,7 @@ namespace MicMute
         }
         private MicStatus currentStatus;
 
-        private bool myVisible; 
+        private bool myVisible;
         public bool MyVisible
         {
             get { return myVisible; }
@@ -59,11 +67,22 @@ namespace MicMute
         public MainForm()
         {
             InitializeComponent();
+            notificationClient = new DeviceNotificationClient(this);
         }
 
-        private void OnNextDevice(DeviceChangedArgs next)
+        // Marshal a callback that arrives on a WASAPI/system thread back onto the UI thread.
+        private void RunOnUi(Action action)
         {
-            UpdateSelectedDevice();
+            if (!IsHandleCreated || IsDisposed) return;
+            try { BeginInvoke(action); }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+        }
+
+        // Raised by the endpoint notification client on any add/remove/state/default change.
+        private void OnDevicesChanged()
+        {
+            RunOnUi(UpdateSelectedDevice);
         }
 
         private void MyHide()
@@ -87,8 +106,9 @@ namespace MicMute
             selectedDeviceName = (string)registryKey.GetValue(registryDeviceName) ?? DEFAULT_RECORDING_DEVICE;
 
             UpdateSelectedDevice();
-            deviceChangedSubscription = AudioController.AudioDeviceChanged.Subscribe(OnNextDevice);
-            
+            enumerator.RegisterEndpointNotificationCallback(notificationClient);
+            notificationClientRegistered = true;
+
             // toggle
             var hotkeyValue = registryKey.GetValue(registryKeyName);
             if (hotkeyValue != null)
@@ -98,7 +118,7 @@ namespace MicMute
                 if (!hotkeyBinder.IsHotkeyAlreadyBound(hotkey)) hotkeyBinder.Bind(hotkey).To(ToggleMicStatus);
             }
 
-            // mute 
+            // mute
             hotkeyValue = registryKey.GetValue(registryKeyMute);
             if (hotkeyValue != null)
             {
@@ -107,7 +127,7 @@ namespace MicMute
                 if (!hotkeyBinder.IsHotkeyAlreadyBound(muteHotkey)) hotkeyBinder.Bind(muteHotkey).To(MuteMicStatus);
             }
 
-            // unmute 
+            // unmute
             hotkeyValue = registryKey.GetValue(registryKeyUnmute);
             if (hotkeyValue != null)
             {
@@ -115,33 +135,84 @@ namespace MicMute
                 unMuteHotkey = (Hotkey)converter.ConvertFromString(hotkeyValue.ToString());
                 if (!hotkeyBinder.IsHotkeyAlreadyBound(unMuteHotkey)) hotkeyBinder.Bind(unMuteHotkey).To(UnMuteMicStatus);
             }
-
-            //AudioController.AudioDeviceChanged.Subscribe(x =>
-            //{
-            //    Debug.WriteLine("{0} - {1}", x.Device.Name, x.ChangedType.ToString());
-            //});
         }
 
-        private void OnMuteChanged(DeviceMuteChangedArgs next)
+        private void OnMuteChanged(AudioVolumeNotificationData data)
         {
-            UpdateStatus(next.Device);
+            // Fired on a WASAPI notification thread - refresh the tray icon on the UI thread.
+            RunOnUi(() => UpdateStatus(currentDevice));
         }
 
-        IDisposable muteChangedSubscription;
-        public void UpdateDevice(IDevice device)
+        public MMDevice GetSelectedDevice()
         {
-            muteChangedSubscription?.Dispose();
-            muteChangedSubscription = device?.MuteChanged.Subscribe(OnMuteChanged);
-            UpdateStatus(device);
-        }
-        public IDevice getSelectedDevice()
-        {
-            return selectedDeviceId == "" ? AudioController.DefaultCaptureDevice : AudioController.GetDevice(new Guid(selectedDeviceId), DeviceState.Active);
+            try
+            {
+                if (string.IsNullOrEmpty(selectedDeviceId))
+                {
+                    return enumerator.HasDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia)
+                        ? enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia)
+                        : null;
+                }
+
+                MMDevice device = enumerator.GetDevice(selectedDeviceId);
+                if (device != null && device.State == DeviceState.Active)
+                {
+                    return device;
+                }
+
+                device?.Dispose();
+                return null;
+            }
+            catch
+            {
+                // Invalid / stale device id (e.g. saved by an older version) or the device
+                // is gone - treat as "no device".
+                return null;
+            }
         }
 
         public void UpdateSelectedDevice()
         {
-            UpdateDevice(getSelectedDevice());
+            UpdateDevice(GetSelectedDevice());
+        }
+
+        public void UpdateDevice(MMDevice device)
+        {
+            string newId = device?.ID;
+            string currentId = currentDevice?.ID;
+
+            if (newId == currentId)
+            {
+                // Same endpoint we are already monitoring - drop the freshly fetched
+                // duplicate and just refresh the status.
+                device?.Dispose();
+                UpdateStatus(currentDevice);
+                return;
+            }
+
+            // Switch to a different device: release the previous one (this also
+            // unregisters its COM volume-change callback).
+            if (currentDevice != null)
+            {
+                if (volumeHandler != null)
+                {
+                    try { currentDevice.AudioEndpointVolume.OnVolumeNotification -= volumeHandler; }
+                    catch { }
+                }
+                currentDevice.Dispose();
+                currentDevice = null;
+                volumeHandler = null;
+            }
+
+            currentDevice = device;
+            if (currentDevice != null)
+            {
+                volumeHandler = OnMuteChanged;
+                try { currentDevice.AudioEndpointVolume.OnVolumeNotification += volumeHandler; }
+                catch { }
+            }
+
+            UpdateStatus(currentDevice);
         }
 
         Icon iconOff = Properties.Resources.off;
@@ -166,19 +237,44 @@ namespace MicMute
             soundPlayers[relativePath]?.Play();
         }
 
-        public void UpdateStatus(IDevice device)
+        private static string SafeDeviceName(MMDevice device)
         {
-            MicStatus newStatus = (device != null) ? (device.IsMuted ? MicStatus.Off : MicStatus.On) : MicStatus.Error;
+            try { return device.FriendlyName; }
+            catch { return DEFAULT_RECORDING_DEVICE; }
+        }
+
+        public void UpdateStatus(MMDevice device)
+        {
+            MicStatus newStatus;
+            string tooltip = "< No device >";
+
+            if (device == null)
+            {
+                newStatus = MicStatus.Error;
+            }
+            else
+            {
+                try
+                {
+                    newStatus = device.AudioEndpointVolume.Mute ? MicStatus.Off : MicStatus.On;
+                    tooltip = SafeDeviceName(device);
+                }
+                catch
+                {
+                    newStatus = MicStatus.Error;
+                }
+            }
+
             bool playSound = currentStatus != MicStatus.Initial && currentStatus != newStatus;
             currentStatus = newStatus;
             switch (currentStatus)
             {
                 case MicStatus.On:
-                    UpdateIcon(iconOn, device.FullName);
+                    UpdateIcon(iconOn, tooltip);
                     if (playSound) PlaySound("on.wav");
                     break;
                 case MicStatus.Off:
-                    UpdateIcon(iconOff, device.FullName);
+                    UpdateIcon(iconOff, tooltip);
                     if (playSound) PlaySound("off.wav");
                     break;
                 case MicStatus.Error:
@@ -193,19 +289,43 @@ namespace MicMute
             this.icon.Text = tooltipText.Substring(0, Math.Min(tooltipText.Length, 63));
         }
 
-        public async void ToggleMicStatus()
+        // mute == null -> toggle
+        private void SetMute(bool? mute)
         {
-            await getSelectedDevice()?.ToggleMuteAsync();
+            MMDevice device = currentDevice;
+            bool ownsDevice = false;
+            if (device == null)
+            {
+                device = GetSelectedDevice();
+                ownsDevice = true;
+            }
+            if (device == null) return;
+
+            try
+            {
+                AudioEndpointVolume volume = device.AudioEndpointVolume;
+                volume.Mute = mute ?? !volume.Mute;
+            }
+            catch { }
+            finally
+            {
+                if (ownsDevice) device.Dispose();
+            }
         }
 
-        public async void MuteMicStatus()
+        public void ToggleMicStatus()
         {
-            await getSelectedDevice()?.SetMuteAsync(true);
+            SetMute(null);
         }
 
-        public async void UnMuteMicStatus()
+        public void MuteMicStatus()
         {
-            await getSelectedDevice()?.SetMuteAsync(false);
+            SetMute(true);
+        }
+
+        public void UnMuteMicStatus()
+        {
+            SetMute(false);
         }
 
         private void Icon_MouseClick(object sender, MouseEventArgs e)
@@ -339,27 +459,26 @@ namespace MicMute
                 comboBox.SelectedIndex = comboBox.Items.Count - 1;
             }
 
-            foreach (CoreAudioDevice device in AudioController.GetCaptureDevices())
+            foreach (MMDevice device in enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
             {
-                if (device.State == DeviceState.Active)
-                {
-                    ComboboxItem item = new ComboboxItem();
-                    item.Text = device.FullName;
-                    item.deviceId = device.Id.ToString();
-                    comboBox.Items.Add(item);
+                ComboboxItem item = new ComboboxItem();
+                item.Text = SafeDeviceName(device);
+                item.deviceId = device.ID;
+                comboBox.Items.Add(item);
 
-                    if (item.deviceId == selectedDeviceId)
-                    {
-                        registryExists = true;
-                        comboBox.SelectedIndex = comboBox.Items.Count - 1;
-                    }
+                if (item.deviceId == selectedDeviceId)
+                {
+                    registryExists = true;
+                    comboBox.SelectedIndex = comboBox.Items.Count - 1;
                 }
+
+                device.Dispose();
             }
 
             if (!registryExists) {
                 ComboboxItem item = new ComboboxItem();
-                item.Text = "(unavailable) " + registryDeviceName.ToString();
-                item.deviceId = selectedDeviceId.ToString();
+                item.Text = "(unavailable) " + selectedDeviceName;
+                item.deviceId = selectedDeviceId;
                 comboBox.Items.Add(item);
                 comboBox.SelectedIndex = comboBox.Items.Count - 1;
             }
@@ -387,11 +506,28 @@ namespace MicMute
                 }
 
                 // Custom resource disposal
-                AudioController?.Dispose();
+                if (notificationClientRegistered)
+                {
+                    try { enumerator.UnregisterEndpointNotificationCallback(notificationClient); }
+                    catch { }
+                    notificationClientRegistered = false;
+                }
+
+                if (currentDevice != null)
+                {
+                    if (volumeHandler != null)
+                    {
+                        try { currentDevice.AudioEndpointVolume.OnVolumeNotification -= volumeHandler; }
+                        catch { }
+                    }
+                    currentDevice.Dispose();
+                    currentDevice = null;
+                    volumeHandler = null;
+                }
+
+                enumerator?.Dispose();
                 registryKey?.Dispose();
                 hotkeyBinder?.Dispose();
-                muteChangedSubscription?.Dispose();
-                deviceChangedSubscription?.Dispose();
 
                 foreach (var player in soundPlayers.Values)
                 {
@@ -400,6 +536,28 @@ namespace MicMute
                 soundPlayers.Clear();
             }
             base.Dispose(disposing);
+        }
+
+        // Receives device add/remove/state/default-change notifications from Core Audio.
+        private class DeviceNotificationClient : IMMNotificationClient
+        {
+            private readonly MainForm form;
+
+            public DeviceNotificationClient(MainForm form)
+            {
+                this.form = form;
+            }
+
+            public void OnDeviceStateChanged(string deviceId, DeviceState newState) => form.OnDevicesChanged();
+            public void OnDeviceAdded(string pwstrDeviceId) => form.OnDevicesChanged();
+            public void OnDeviceRemoved(string deviceId) => form.OnDevicesChanged();
+
+            public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+            {
+                if (flow == DataFlow.Capture) form.OnDevicesChanged();
+            }
+
+            public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
         }
     }
 }

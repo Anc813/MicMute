@@ -1,0 +1,35 @@
+name: build
+
+on:
+  push:
+    branches:
+      - "fix/memory-leak-naudio"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore packages
+        run: nuget restore MicMute.sln
+
+      - name: Build (Release)
+        run: msbuild MicMute.sln /t:Rebuild /p:Configuration=Release /p:Platform="Any CPU" /verbosity:minimal
+
+      - name: Upload MicMute.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicMute
+          path: bin/Release/MicMute.exe
+          if-no-files-found: error
